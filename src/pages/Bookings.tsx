@@ -38,108 +38,83 @@ export default function Bookings() {
   const [internalNotes, setInternalNotes] = useState("");
   const [updatedStatus, setUpdatedStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
 
-  const handleDownloadPDF = () => {
+  // Fixed PDF Download with proper image loading
+  const handleDownloadPDF = async () => {
     if (!selectedBooking) return;
+    setDownloadingPDF(true);
 
     const doc = new jsPDF();
     const marginLeft = 20;
     let y = 20;
 
-    // Title
     doc.setFontSize(18);
     doc.text("Booking Details", marginLeft, y);
-    y += 10;
-    doc.setFontSize(12);
-    doc.setTextColor(100);
+    y += 15;
 
-    // Booking ID & Date
-    doc.text(`Booking ID: ${selectedBooking._id}`, marginLeft, (y += 10));
-    doc.text(`Status: ${selectedBooking.status}`, marginLeft, (y += 8));
-    doc.text(
-      `Created At: ${new Date(selectedBooking.createdAt).toLocaleDateString()}`,
-      marginLeft,
-      (y += 8)
-    );
+    doc.setFontSize(11);
+    doc.text(`Booking ID: ${selectedBooking._id}`, marginLeft, y); y += 8;
+    doc.text(`Status: ${selectedBooking.status}`, marginLeft, y); y += 8;
+    doc.text(`Created: ${new Date(selectedBooking.createdAt).toLocaleString()}`, marginLeft, y); y += 12;
 
-    y += 10;
-    doc.setDrawColor(180);
-    doc.line(marginLeft, y, 190, y);
-    y += 10;
-
-    // Customer Info
-    doc.setTextColor(0);
     doc.setFontSize(14);
-    doc.text("Customer Details", marginLeft, y);
-    y += 10;
-    doc.setFontSize(12);
-    doc.text(`Name: ${selectedBooking.name}`, marginLeft, (y += 8));
-    doc.text(`Email: ${selectedBooking.email}`, marginLeft, (y += 8));
-    doc.text(`Phone: ${selectedBooking.phone}`, marginLeft, (y += 8));
+    doc.text("Customer Information", marginLeft, y); y += 10;
+    doc.setFontSize(11);
+    doc.text(`Name: ${selectedBooking.name}`, marginLeft, y); y += 7;
+    doc.text(`Email: ${selectedBooking.email}`, marginLeft, y); y += 7;
+    doc.text(`Phone: ${selectedBooking.phone}`, marginLeft, y); y += 12;
 
-    y += 10;
-    doc.line(marginLeft, y, 190, y);
-    y += 10;
-
-    // Package Info
     doc.setFontSize(14);
-    doc.text("Package Details", marginLeft, y);
-    y += 10;
-    doc.setFontSize(12);
-    doc.text(`Package: ${selectedBooking.packageName}`, marginLeft, (y += 8));
-    doc.text(
-      `Travel Dates: ${new Date(
-        selectedBooking.dateFrom
-      ).toLocaleDateString()} - ${new Date(
-        selectedBooking.dateTo
-      ).toLocaleDateString()}`,
-      marginLeft,
-      (y += 8)
-    );
-    doc.text(
-      `Travelers Count: ${selectedBooking.travelersCount}`,
-      marginLeft,
-      (y += 8)
-    );
+    doc.text("Travel Details", marginLeft, y); y += 10;
+    doc.setFontSize(11);
+    doc.text(`Package: ${selectedBooking.packageName}`, marginLeft, y); y += 7;
+    doc.text(`Travelers: ${selectedBooking.travelersCount}`, marginLeft, y); y += 7;
+    doc.text(`Dates: ${new Date(selectedBooking.dateFrom).toLocaleDateString()} - ${new Date(selectedBooking.dateTo).toLocaleDateString()}`, marginLeft, y); y += 12;
 
     if (selectedBooking.specialRequests) {
-      y += 10;
-      doc.text("Special Requests:", marginLeft, y);
-      const splitText = doc.splitTextToSize(selectedBooking.specialRequests, 170);
-      doc.text(splitText, marginLeft, (y += 8));
-      y += splitText.length * 6;
-    }
-
-    y += 10;
-    doc.line(marginLeft, y, 190, y);
-    y += 10;
-
-    // Payment Slip
-    if (selectedBooking.paymentSlip) {
       doc.setFontSize(14);
-      doc.text("Payment Slip", marginLeft, y);
-      y += 10;
-
-      const imageUrl = `${resources}${selectedBooking.paymentSlip}`;
-      const img = new Image();
-      img.src = imageUrl;
-
-      img.onload = () => {
-        const imgWidth = 100;
-        const imgHeight = (img.height * imgWidth) / img.width;
-        doc.addImage(img, "JPEG", marginLeft, y, imgWidth, imgHeight);
-        y += imgHeight + 20;
-
-        doc.save(`Booking_${selectedBooking._id}.pdf`);
-      };
-
-      img.onerror = () => {
-        doc.text("Failed to load payment slip image.", marginLeft, y);
-        doc.save(`Booking_${selectedBooking._id}.pdf`);
-      };
-    } else {
-      doc.save(`Booking_${selectedBooking._id}.pdf`);
+      doc.text("Special Requests:", marginLeft, y); y += 8;
+      doc.setFontSize(10);
+      const splitText = doc.splitTextToSize(selectedBooking.specialRequests, 170);
+      doc.text(splitText, marginLeft, y);
+      y += splitText.length * 5 + 10;
     }
+
+    if (selectedBooking.paymentSlip) {
+      try {
+        const imageUrl = `${resources}${selectedBooking.paymentSlip}`;
+        const imgData = await new Promise<string>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img, 0, 0);
+              resolve(canvas.toDataURL("image/jpeg", 0.8));
+            }
+          };
+          img.onerror = () => reject(new Error("Failed to load image"));
+          img.src = imageUrl;
+        });
+
+        doc.setFontSize(14);
+        doc.text("Payment Slip:", marginLeft, y); y += 10;
+        const imgWidth = 100;
+        const imgHeight = 70;
+        doc.addImage(imgData, "JPEG", marginLeft, y, imgWidth, imgHeight);
+        y += imgHeight + 10;
+      } catch (err) {
+        doc.setFontSize(10);
+        doc.text("Payment slip image could not be loaded.", marginLeft, y); y += 10;
+      }
+    }
+
+    doc.save(`Booking_${selectedBooking._id}.pdf`);
+    setDownloadingPDF(false);
   };
 
   useEffect(() => {
@@ -155,23 +130,24 @@ export default function Bookings() {
         toast.error("API not ready, loading fallback data");
         const fallbackData: Booking[] = [
           {
-            _id: "BK001",
-            packageId: "1",
-            packageName: "Beach Paradise",
-            name: "John Smith",
-            email: "john@gmail.com",
-            phone: "+94771230001",
-            travelersCount: 2,
-            dateFrom: "2025-01-10",
-            dateTo: "2025-01-15",
-            specialRequests: "Need sea view room",
-            status: "Confirmed",
-            createdAt: "2025-01-10",
-            updatedAt: "2025-01-10",
+            _id: "69103fe757232199b3179dc6",
+            packageId: "69103f7a57232199b3179dad",
+            packageName: "cjbwasdi",
+            name: "user",
+            email: "user@gmail.com",
+            phone: "432424",
+            travelersCount: 1,
+            dateFrom: "2025-11-19T00:00:00.000+00:00",
+            dateTo: "2025-11-19T00:00:00.000+00:00",
+            specialRequests: "3463",
+            status: "New",
+            createdAt: "2025-11-09T07:16:55.111+00:00",
+            updatedAt: "2025-11-09T07:16:55.111+00:00",
+            paymentSlip: "/uploads/paymentSlips/1762672615095-Screenshot 2025-10-05 191612.png",
           },
         ];
         setBookings(fallbackData);
-        setPackages(["Beach Paradise"]);
+        setPackages(["cjbwasdi"]);
       }
     };
     fetchData();
@@ -249,9 +225,9 @@ export default function Bookings() {
         travelersCount: selectedBooking.travelersCount,
         specialRequests: selectedBooking.specialRequests,
       });
-      toast.success(`Email sent to ${selectedBooking.email}`);
+      toast.success(`Confirmation email sent to ${selectedBooking.email}`);
     } catch (error) {
-      toast.error("Failed to send confirmation email");
+      toast.error("Failed to send email");
     }
   };
 
@@ -273,9 +249,7 @@ export default function Bookings() {
           >
             <option value="">All Statuses</option>
             {uniqueStatuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
 
@@ -286,9 +260,7 @@ export default function Bookings() {
           >
             <option value="">All Packages</option>
             {packages.map((pkg) => (
-              <option key={pkg} value={pkg}>
-                {pkg}
-              </option>
+              <option key={pkg} value={pkg}>{pkg}</option>
             ))}
           </select>
 
@@ -296,17 +268,13 @@ export default function Bookings() {
             type="date"
             className="border rounded-lg p-2"
             value={dateRange.start}
-            onChange={(e) =>
-              setDateRange((prev) => ({ ...prev, start: e.target.value }))
-            }
+            onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
           />
           <input
             type="date"
             className="border rounded-lg p-2"
             value={dateRange.end}
-            onChange={(e) =>
-              setDateRange((prev) => ({ ...prev, end: e.target.value }))
-            }
+            onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
           />
 
           <input
@@ -335,10 +303,7 @@ export default function Bookings() {
             <tbody>
               {filteredBookings.length > 0 ? (
                 filteredBookings.map((b) => (
-                  <tr
-                    key={b._id}
-                    className="border-t hover:bg-gray-50 transition"
-                  >
+                  <tr key={b._id} className="border-t hover:bg-gray-50 transition">
                     <td className="px-4 py-3">{b._id}</td>
                     <td className="px-4 py-3">{b.name}</td>
                     <td className="px-4 py-3">{b.email}</td>
@@ -352,6 +317,8 @@ export default function Bookings() {
                             ? "bg-yellow-100 text-yellow-700"
                             : b.status === "Cancelled"
                             ? "bg-red-100 text-red-700"
+                            : b.status === "New"
+                            ? "bg-blue-100 text-blue-700"
                             : "bg-gray-100 text-gray-700"
                         }`}
                       >
@@ -365,7 +332,7 @@ export default function Bookings() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => openBookingDetails(b)}
-                        className="text-blue-500 hover:text-blue-700"
+                        className="text-blue-600 hover:text-blue-800 transition"
                       >
                         <Eye size={18} />
                       </button>
@@ -374,10 +341,7 @@ export default function Bookings() {
                 ))
               ) : (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="text-center py-6 text-gray-500 italic"
-                  >
+                  <td colSpan={7} className="text-center py-8 text-gray-500 italic">
                     No bookings found.
                   </td>
                 </tr>
@@ -386,38 +350,52 @@ export default function Bookings() {
           </table>
         </div>
 
-        {/* Modal */}
+        {/* Modal - FULLY FIXED */}
         {isModalOpen && selectedBooking && (
-          <div className="fixed inset-0 bg-black/80 bg-opacity-40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
-              <div className="flex justify-between items-center px-5 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
-                <h2 className="font-semibold text-sm">
-                  Booking #{selectedBooking._id}
-                </h2>
-                <button
-                  onClick={closeModal}
-                  className="hover:bg-white/20 p-1 rounded"
-                >
-                  <X size={16} />
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-1/2 max-h-screen overflow-y-auto">
+              <div className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-xl">
+                <h2 className="font-bold text-lg">Booking #{selectedBooking._id}</h2>
+                <button onClick={closeModal} className="hover:bg-white/20 p-2 rounded-lg transition">
+                  <X size={20} />
                 </button>
               </div>
 
-              <div className="p-5 space-y-4 text-sm">
+              <div className="p-6 space-y-5 text-sm">
+                {/* Customer */}
                 <div>
-                  <h3 className="font-semibold text-gray-600 mb-1">Customer</h3>
-                  <p>{selectedBooking.name}</p>
-                  <p className="text-gray-500">{selectedBooking.email}</p>
-                  <p className="text-gray-500">{selectedBooking.phone}</p>
+                  <h3 className="font-semibold text-gray-700 mb-2">Customer</h3>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="font-medium">{selectedBooking.name}</p>
+                    <p className="text-gray-600">{selectedBooking.email}</p>
+                    <p className="text-gray-600">{selectedBooking.phone}</p>
+                  </div>
                 </div>
 
+                {/* Package & Travel */}
                 <div>
-                  <h3 className="font-semibold text-gray-600 mb-1">Package</h3>
-                  <p>{selectedBooking.packageName}</p>
+                  <h3 className="font-semibold text-gray-700 mb-2">Package & Travel</h3>
+                  <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                    <p><strong>Package:</strong> {selectedBooking.packageName}</p>
+                    <p><strong>Travelers:</strong> {selectedBooking.travelersCount}</p>
+                    <p><strong>Dates:</strong> {new Date(selectedBooking.dateFrom).toLocaleDateString()} - {new Date(selectedBooking.dateTo).toLocaleDateString()}</p>
+                  </div>
                 </div>
 
+                {/* Special Requests */}
+                {selectedBooking.specialRequests && (
+                  <div>
+                    <h3 className="font-semibold text-gray-700 mb-2">Special Requests</h3>
+                    <p className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-gray-800">
+                      {selectedBooking.specialRequests}
+                    </p>
+                  </div>
+                )}
+
+                {/* Payment Slip */}
                 {selectedBooking.paymentSlip && (
                   <div>
-                    <h3 className="font-semibold text-gray-600 mb-1">Payment Slip</h3>
+                    <h3 className="font-semibold text-gray-700 mb-2">Payment Slip</h3>
                     <a
                       href={`${resources}${selectedBooking.paymentSlip}`}
                       target="_blank"
@@ -426,76 +404,69 @@ export default function Bookings() {
                       <img
                         src={`${resources}${selectedBooking.paymentSlip}`}
                         alt="Payment Slip"
-                        className="rounded-lg border w-[150px] max-h-64 object-contain hover:opacity-90 cursor-pointer"
+                        className="rounded-lg border-2 border-gray-200 w-full max-w-md object-contain hover:opacity-90 transition cursor-pointer"
                       />
                     </a>
                   </div>
                 )}
 
+                {/* Status Update */}
                 <div>
-                  <h3 className="font-semibold text-gray-600 mb-1">Dates</h3>
-                  <p>
-                    {new Date(selectedBooking.dateFrom).toLocaleDateString()} -{" "}
-                    {new Date(selectedBooking.dateTo).toLocaleDateString()}
-                  </p>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-gray-600 mb-1">
-                    Update Status
-                  </h3>
+                  <h3 className="font-semibold text-gray-700 mb-2">Update Status</h3>
                   <div className="flex flex-wrap gap-2">
-                    {["New", "Confirmed", "Pending", "Cancelled", "Completed"].map(
-                      (status) => (
-                        <button
-                          key={status}
-                          onClick={() => setUpdatedStatus(status)}
-                          className={`px-3 py-1 text-xs font-semibold rounded ${
-                            updatedStatus === status
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
-                        >
-                          {status}
-                        </button>
-                      )
-                    )}
+                    {["New", "Confirmed", "Pending", "Cancelled", "Completed"].map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => setUpdatedStatus(status)}
+                        className={`px-4 py-2 rounded-lg font-medium transition ${
+                          updatedStatus === status
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <textarea
-                  className="w-full border rounded-lg p-2 text-sm"
-                  rows={3}
-                  placeholder="Internal notes..."
-                  value={internalNotes}
-                  onChange={(e) => setInternalNotes(e.target.value)}
-                />
+                {/* Internal Notes */}
+                <div>
+                  <h3 className="font-semibold text-gray-700 mb-2">Internal Notes</h3>
+                  <textarea
+                    className="w-full border rounded-lg p-3 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    rows={4}
+                    placeholder="Add notes visible only to admin team..."
+                    value={internalNotes}
+                    onChange={(e) => setInternalNotes(e.target.value)}
+                  />
+                </div>
 
-                <div className="flex flex-col gap-2">
+                {/* Actions */}
+                <div className="flex flex-col gap-3 pt-4 border-t">
                   <button
                     onClick={handleSaveChanges}
                     disabled={saving}
-                    className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white ${
-                      saving
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-green-600 hover:bg-green-700"
+                    className={`flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-white font-medium transition ${
+                      saving ? "bg-gray-400" : "bg-green-600 hover:bg-green-700"
                     }`}
                   >
-                    <Save size={16} /> {saving ? "Saving..." : "Save Changes"}
+                    <Save size={18} /> {saving ? "Saving..." : "Save Changes"}
                   </button>
 
                   <button
                     onClick={handleResendConfirmation}
-                    className="flex items-center justify-center gap-2 px-4 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-50"
+                    className="flex items-center justify-center gap-2 px-5 py-3 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 font-medium transition"
                   >
-                    <Mail size={16} /> Resend Confirmation
+                    <Mail size={18} /> Resend Confirmation Email
                   </button>
 
                   <button
                     onClick={handleDownloadPDF}
-                    className="flex items-center justify-center gap-2 px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50"
+                    disabled={downloadingPDF}
+                    className="flex items-center justify-center gap-2 px-5 py-3 border border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 font-medium transition"
                   >
-                    <Save size={16} /> Download PDF
+                    <Save size={18} /> {downloadingPDF ? "Generating PDF..." : "Download PDF"}
                   </button>
                 </div>
               </div>
